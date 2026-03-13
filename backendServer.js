@@ -1,347 +1,489 @@
-// server.js
 require('dotenv').config();
-import express, { json } from 'express';
-import helmet from 'helmet';
-import cors from 'cors';
-import rateLimit from 'express-rate-limit';
-import { hash, compare } from 'bcrypt';
-import { sign, verify } from 'jsonwebtoken';
-import { query } from './db';
-import { v4 as uuidv4 } from 'uuid';
-
-const PORT = process.env.PORT || 4000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
-const SWIPE_LIMIT_PER_DAY = 10;
+const express = require('express');
+const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 const app = express();
+app.use(express.json());
 
-app.use(helmet());
-app.use(cors());
-app.use(json());
+/* =========================
+   CONFIG
+========================= */
+const PORT = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
-// Basic rate limiter for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 20
+const DB_CONFIG = {
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: Number(process.env.DB_PORT || 3306),
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+};
+
+const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+
+// Email transport (optional but recommended for verification)
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
-// ----------------- utility helpers -----------------
-function signToken(user) {
-  return sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+/* =========================
+   DB POOL + SCHEMA
+========================= */
+const pool = mysql.createPool(DB_CONFIG);
+
+async function initDb() {
+  // Create DB (if missing) then select it
+  await pool.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME}\`;`);
+  await pool.query(`USE \`${process.env.DB_NAME}\`;`);
+
+  // USERS
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      role ENUM('shelter','adopter') NOT NULL DEFAULT 'adopter',
+      is_email_verified TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    );
+  `);
+
+  // EMAIL VERIFICATION TOKENS (one-time)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_verification_tokens (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT UNSIGNED NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_evt_user_id (user_id),
+      INDEX idx_evt_token_hash (token_hash),
+      CONSTRAINT fk_evt_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    );
+  `);
+
+  // ANIMALS
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS animals (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      shelter_id BIGINT UNSIGNED NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      species VARCHAR(80) NOT NULL,
+      breed VARCHAR(120) NULL,
+      age INT NULL,
+      sex VARCHAR(30) NULL,
+      description TEXT NULL,
+      status ENUM('available','adopted','hold') NOT NULL DEFAULT 'available',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_animals_shelter_id (shelter_id),
+      INDEX idx_animals_status (status),
+      CONSTRAINT fk_animals_shelter
+        FOREIGN KEY (shelter_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    );
+  `);
 }
 
-async function getUserByEmail(email) {
-  const q = 'SELECT id, email, password_hash, role, name FROM users WHERE email = $1';
-  const r = await query(q, [email]);
-  return r.rows[0];
-}
-
-async function createUser({ email, passwordHash, role, name }) {
-  const q = `INSERT INTO users (id, email, password_hash, role, name) VALUES ($1,$2,$3,$4,$5) RETURNING id,email,role,name`;
-  const id = uuidv4();
-  const r = await query(q, [id, email, passwordHash, role, name]);
-  return r.rows[0];
-}
-
+/* =========================
+   HELPERS
+========================= */
 function authMiddleware(req, res, next) {
-  const h = req.headers.authorization;
-  if (!h || !h.startsWith('Bearer ')) return res.status(401).json({ error: 'Missing auth' });
-  const token = h.split(' ')[1];
+  const authHeader = req.header('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
   try {
-    const payload = verify(token, JWT_SECRET);
-    req.user = payload; // { id, role }
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload; // { userId, email, role }
     next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
-    if (req.user.role !== role && req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    next();
-  };
+function requireShelter(req, res, next) {
+  if (req.user?.role !== 'shelter') {
+    return res.status(403).json({ error: 'Only shelter accounts can manage animals' });
+  }
+  next();
 }
 
-// ----------------- health -----------------
-app.get('/health', (req, res) => res.json({ ok: true }));
+function sha256Hex(input) {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
 
-// ----------------- auth -----------------
-app.post('/auth/register', authLimiter, async (req, res) => {
+async function sendVerificationEmail(email, verifyUrl) {
+  // If SMTP not configured, just log the link (useful for dev)
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log(`(DEV) Verification link for ${email}: ${verifyUrl}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: process.env.SMTP_USER,
+    to: email,
+    subject: 'Verify your email',
+    text: `Verify your email by clicking: ${verifyUrl}`,
+  });
+}
+
+/* =========================
+   ROUTES: HEALTH
+========================= */
+app.get('/', (req, res) => res.json({ ok: true }));
+
+/* =========================
+   ROUTES: AUTH
+========================= */
+
+// Register
+// POST /api/auth/register
+// body: { email, password, role } where role: "shelter" | "adopter"
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password, role } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+  const safeRole = role === 'shelter' ? 'shelter' : 'adopter';
+
   try {
-    const { email, password, role = 'ADOPTEE', name } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-    if (!['ADOPTEE', 'SHELTER', 'ADMIN'].includes(role)) return res.status(400).json({ error: 'invalid role' });
+    const [existing] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    if (existing.length > 0) return res.status(409).json({ error: 'User already exists' });
 
-    const existing = await getUserByEmail(email);
-    if (existing) return res.status(409).json({ error: 'email already registered' });
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    const passwordHash = await hash(password, 10);
-    const user = await createUser({ email, passwordHash, role, name });
+    const [result] = await pool.query(
+      'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)',
+      [email, passwordHash, safeRole]
+    );
 
-    // If shelter, create a shelters row (optional)
-    if (role === 'SHELTER') {
-      const shelterId = uuidv4();
-      await query(
-        `INSERT INTO shelters (id, user_id, name) VALUES ($1,$2,$3)`,
-        [shelterId, user.id, name || null]
+    const userId = String(result.insertId);
+
+    // Create email verification token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = sha256Hex(rawToken);
+
+    // expires in 24 hours
+    const [tokenInsert] = await pool.query(
+      `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+      [userId, tokenHash]
+    );
+
+    // Verification URL (you can point this to your frontend; frontend then calls /verify)
+    const verifyUrl = `${APP_BASE_URL}/verify-email?token=${rawToken}`;
+
+    await sendVerificationEmail(email, verifyUrl);
+
+    return res.status(201).json({
+      id: userId,
+      email,
+      role: safeRole,
+      isEmailVerified: false,
+      message: 'Registered. Please verify your email.',
+      // You might remove this in production; helpful for mobile dev testing:
+      devVerifyLink: verifyUrl,
+    });
+  } catch (err) {
+    console.error('Register error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Verify email
+// POST /api/auth/verify-email
+// body: { token }
+app.post('/api/auth/verify-email', async (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.status(400).json({ error: 'token required' });
+
+  try {
+    const tokenHash = sha256Hex(token);
+
+    const [rows] = await pool.query(
+      `SELECT id, user_id, expires_at, used_at
+       FROM email_verification_tokens
+       WHERE token_hash = ?
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (rows.length === 0) return res.status(400).json({ error: 'Invalid token' });
+
+    const rec = rows[0];
+    if (rec.used_at) return res.status(400).json({ error: 'Token already used' });
+
+    // Check expiry
+    const expiresAt = new Date(rec.expires_at);
+    if (Date.now() > expiresAt.getTime()) return res.status(400).json({ error: 'Token expired' });
+
+    // Mark token used + user verified
+    await pool.query('UPDATE email_verification_tokens SET used_at = NOW() WHERE id = ?', [rec.id]);
+    await pool.query('UPDATE users SET is_email_verified = 1 WHERE id = ?', [rec.user_id]);
+
+    return res.json({ ok: true, message: 'Email verified' });
+  } catch (err) {
+    console.error('Verify email error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Resend verification email (optional)
+// POST /api/auth/resend-verification
+// body: { email }
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  try {
+    const [users] = await pool.query(
+      'SELECT id, email, is_email_verified FROM users WHERE email = ? LIMIT 1',
+      [email]
+    );
+    if (users.length === 0) return res.status(200).json({ ok: true }); // don't leak existence
+    if (users[0].is_email_verified) return res.status(200).json({ ok: true });
+
+    const userId = String(users[0].id);
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = sha256Hex(rawToken);
+
+    await pool.query(
+      `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+       VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+      [userId, tokenHash]
+    );
+
+    const verifyUrl = `${APP_BASE_URL}/verify-email?token=${rawToken}`;
+    await sendVerificationEmail(email, verifyUrl);
+
+    return res.json({ ok: true, message: 'If the account exists, a verification email was sent.', devVerifyLink: verifyUrl });
+  } catch (err) {
+    console.error('Resend verification error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Login
+// POST /api/auth/login
+// body: { email, password }
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, email, password_hash, role, is_email_verified FROM users WHERE email = ? LIMIT 1',
+      [email]
+    );
+    if (rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const user = rows[0];
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const payload = { userId: String(user.id), email: user.email, role: user.role };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+
+    return res.json({
+      token,
+      user: {
+        id: String(user.id),
+        email: user.email,
+        role: user.role,
+        isEmailVerified: Boolean(user.is_email_verified),
+      },
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/* =========================
+   ROUTES: ANIMALS
+========================= */
+
+// GET /api/animals
+// Shelter -> only their animals
+// Adopter -> only available animals
+app.get('/api/animals', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role === 'shelter') {
+      const [rows] = await pool.query(
+        `SELECT id, shelter_id, name, species, breed, age, sex, description, status, created_at
+         FROM animals
+         WHERE shelter_id = ?
+         ORDER BY created_at DESC`,
+        [req.user.userId]
       );
+      return res.json(rows);
     }
 
-    const token = signToken(user);
-    res.status(201).json({ token, user });
+    const [rows] = await pool.query(
+      `SELECT id, shelter_id, name, species, breed, age, sex, description, status, created_at
+       FROM animals
+       WHERE status = 'available'
+       ORDER BY created_at DESC`
+    );
+    return res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('GET /api/animals error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.post('/auth/login', authLimiter, async (req, res) => {
+// GET /api/animals/:id
+app.get('/api/animals/:id', authMiddleware, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-    const user = await getUserByEmail(email);
-    if (!user) return res.status(401).json({ error: 'invalid credentials' });
+    const [rows] = await pool.query(
+      `SELECT id, shelter_id, name, species, breed, age, sex, description, status, created_at
+       FROM animals
+       WHERE id = ?
+       LIMIT 1`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Animal not found' });
 
-    const ok = await compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+    const animal = rows[0];
 
-    const token = signToken(user);
-    res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-app.get('/me', authMiddleware, async (req, res) => {
-  // returns basic info about the user
-  try {
-    const userId = req.user.id;
-    const r = await query('SELECT id,email,role,name,created_at FROM users WHERE id=$1', [userId]);
-    if (!r.rows[0]) return res.status(404).json({ error: 'user not found' });
-    res.json(r.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-// ----------------- shelter: create / list dogs -----------------
-app.post('/shelter/dogs', authMiddleware, requireRole('SHELTER'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { name, species, breed, age_months, sex, size, description } = req.body;
-    // find shelter id
-    const shelterRes = await query('SELECT id FROM shelters WHERE user_id=$1', [userId]);
-    if (!shelterRes.rows[0]) return res.status(400).json({ error: 'shelter profile not found' });
-    const shelterId = shelterRes.rows[0].id;
-    const dogId = uuidv4();
-    const q = `INSERT INTO dogs (id, shelter_id, name, species, breed, age_months, sex, size, description)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`;
-    const r = await query(q, [dogId, shelterId, name, species, breed, age_months, sex, size, description]);
-    res.status(201).json(r.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-app.get('/shelter/dogs', authMiddleware, requireRole('SHELTER'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const shelterRes = await query('SELECT id FROM shelters WHERE user_id=$1', [userId]);
-    if (!shelterRes.rows[0]) return res.status(400).json({ error: 'shelter profile not found' });
-    const shelterId = shelterRes.rows[0].id;
-    const r = await query('SELECT * FROM dogs WHERE shelter_id=$1 ORDER BY created_at DESC', [shelterId]);
-    res.json(r.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-// ----------------- feed for adoptees -----------------
-app.get('/dogs/feed', authMiddleware, requireRole('ADOPTEE'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    // For MVP: return AVAILABLE dogs that this adopter hasn't swiped on yet.
-    const q = `
-      SELECT d.*,
-        (SELECT url FROM dog_photos dp WHERE dp.dog_id = d.id ORDER BY sort_order LIMIT 1) AS photo_url
-      FROM dogs d
-      WHERE d.status = 'AVAILABLE'
-        AND NOT EXISTS (SELECT 1 FROM swipes s WHERE s.dog_id = d.id AND s.adopter_user_id = $1)
-      ORDER BY d.created_at DESC
-      LIMIT 20
-    `;
-    const r = await query(q, [userId]);
-    res.json(r.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
-  }
-});
-
-// ----------------- swipes -----------------
-// POST /swipes { dogId, direction }
-app.post('/swipes', authMiddleware, requireRole('ADOPTEE'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { dogId, direction } = req.body;
-    if (!dogId || !['LEFT', 'RIGHT'].includes(direction)) {
-      return res.status(400).json({ error: 'dogId and direction (LEFT|RIGHT) required' });
+    if (req.user.role === 'shelter') {
+      if (String(animal.shelter_id) !== String(req.user.userId)) return res.status(403).json({ error: 'Forbidden' });
+      return res.json(animal);
     }
 
-    // Enforce limit: count swipes today
-    const countQ = `SELECT COUNT(*) FROM swipes WHERE adopter_user_id = $1 AND created_at >= (date_trunc('day', NOW()))`;
-    const cntRes = await query(countQ, [userId]);
-    const todayCount = parseInt(cntRes.rows[0].count, 10);
-    if (todayCount >= SWIPE_LIMIT_PER_DAY) {
-      return res.status(429).json({ error: 'Swipe limit reached for today', remaining: 0 });
-    }
-
-    // Insert swipe - uniqueness prevents duplicate swipes
-    try {
-      const swipeId = uuidv4();
-      const iq = `INSERT INTO swipes (id, adopter_user_id, dog_id, direction) VALUES ($1,$2,$3,$4) RETURNING *`;
-      const insertRes = await query(iq, [swipeId, userId, dogId, direction]);
-
-      // If RIGHT, add to favorites (idempotent)
-      if (direction === 'RIGHT') {
-        const favQ = `INSERT INTO favorites (id, user_id, dog_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`;
-        await query(favQ, [uuidv4(), userId, dogId]);
-      }
-
-      const remaining = Math.max(0, SWIPE_LIMIT_PER_DAY - (todayCount + 1));
-      return res.json({ swipe: insertRes.rows[0], remaining });
-    } catch (err) {
-      // Unique violation (duplicate swipe)
-      if (err && err.code === '23505') { // Postgres unique_violation
-        return res.status(409).json({ error: 'Already swiped this dog' });
-      }
-      throw err;
-    }
+    if (animal.status !== 'available') return res.status(403).json({ error: 'Forbidden' });
+    return res.json(animal);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('GET /api/animals/:id error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.get('/swipes/remaining', authMiddleware, requireRole('ADOPTEE'), async (req, res) => {
+// POST /api/animals (shelter only)
+app.post('/api/animals', authMiddleware, requireShelter, async (req, res) => {
+  const { name, species, breed, age, sex, description, status } = req.body || {};
+  if (!name || !species) return res.status(400).json({ error: 'name and species required' });
+
+  const safeStatus = ['available', 'adopted', 'hold'].includes(status) ? status : 'available';
+
   try {
-    const userId = req.user.id;
-    const countQ = `SELECT COUNT(*) FROM swipes WHERE adopter_user_id = $1 AND created_at >= (date_trunc('day', NOW()))`;
-    const cntRes = await query(countQ, [userId]);
-    const todayCount = parseInt(cntRes.rows[0].count, 10);
-    const remaining = Math.max(0, SWIPE_LIMIT_PER_DAY - todayCount);
-    res.json({ remaining });
+    const [result] = await pool.query(
+      `INSERT INTO animals (shelter_id, name, species, breed, age, sex, description, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.userId,
+        name,
+        species,
+        breed || null,
+        typeof age === 'number' ? age : null,
+        sex || null,
+        description || null,
+        safeStatus,
+      ]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT id, shelter_id, name, species, breed, age, sex, description, status, created_at
+       FROM animals
+       WHERE id = ?`,
+      [result.insertId]
+    );
+
+    return res.status(201).json(rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('POST /api/animals error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ----------------- favorites list -----------------
-app.get('/favorites', authMiddleware, requireRole('ADOPTEE'), async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const q = `
-      SELECT f.*, d.name, d.species, d.breed,
-        (SELECT url FROM dog_photos dp WHERE dp.dog_id = d.id ORDER BY sort_order LIMIT 1) AS photo_url
-      FROM favorites f
-      JOIN dogs d ON d.id = f.dog_id
-      WHERE f.user_id = $1
-      ORDER BY f.created_at DESC
-    `;
-    const r = await query(q, [userId]);
-    res.json(r.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+// PATCH /api/animals/:id (shelter only)
+app.patch('/api/animals/:id', authMiddleware, requireShelter, async (req, res) => {
+  const allowed = ['name', 'species', 'breed', 'age', 'sex', 'description', 'status'];
+  const updates = {};
+
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) updates[key] = req.body[key];
   }
-});
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No valid fields to update' });
 
-// ----------------- convert favorite -> match (create conversation)
-app.post('/favorites/:dogId/match', authMiddleware, requireRole('ADOPTEE'), async (req, res) => {
+  if ('status' in updates && !['available', 'adopted', 'hold'].includes(updates.status)) {
+    updates.status = 'available';
+  }
+
   try {
-    const userId = req.user.id;
-    const dogId = req.params.dogId;
+    const [existing] = await pool.query('SELECT id, shelter_id FROM animals WHERE id = ? LIMIT 1', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Animal not found' });
+    if (String(existing[0].shelter_id) !== String(req.user.userId)) return res.status(403).json({ error: 'Forbidden' });
 
-    // ensure favorite exists
-    const favRes = await query('SELECT * FROM favorites WHERE user_id=$1 AND dog_id=$2', [userId, dogId]);
-    if (!favRes.rows[0]) return res.status(400).json({ error: 'Dog not in favorites' });
-
-    // create match row (idempotent)
-    try {
-      await query('INSERT INTO matches (id, user_id, dog_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [uuidv4(), userId, dogId]);
-    } catch (e) {
-      // ignore
+    const setClauses = [];
+    const values = [];
+    for (const [k, v] of Object.entries(updates)) {
+      setClauses.push(`${k} = ?`);
+      values.push(v === '' ? null : v);
     }
+    values.push(req.params.id);
 
-    // Find shelter for that dog
-    const dogRes = await query('SELECT shelter_id FROM dogs WHERE id=$1', [dogId]);
-    if (!dogRes.rows[0]) return res.status(404).json({ error: 'Dog not found' });
-    const shelterId = dogRes.rows[0].shelter_id;
+    await pool.query(`UPDATE animals SET ${setClauses.join(', ')} WHERE id = ?`, values);
 
-    // Create or reuse conversation: unique(adopter,shelter,dog)
-    const convQ = `INSERT INTO conversations (id, adopter_user_id, shelter_id, dog_id) VALUES ($1,$2,$3,$4)
-                   ON CONFLICT (adopter_user_id, shelter_id, dog_id) DO NOTHING RETURNING *`;
-    const convId = uuidv4();
-    const convRes = await query(convQ, [convId, userId, shelterId, dogId]);
+    const [rows] = await pool.query(
+      `SELECT id, shelter_id, name, species, breed, age, sex, description, status, created_at
+       FROM animals
+       WHERE id = ?`,
+      [req.params.id]
+    );
 
-    // If no row returned, fetch existing
-    let conversation = convRes.rows[0];
-    if (!conversation) {
-      const cr = await query(
-        'SELECT * FROM conversations WHERE adopter_user_id=$1 AND shelter_id=$2 AND dog_id=$3',
-        [userId, shelterId, dogId]
-      );
-      conversation = cr.rows[0];
-    }
-
-    res.json({ conversation, status: 'MATCH_CREATED' });
+    return res.json(rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('PATCH /api/animals/:id error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ----------------- shelter: who liked my dogs -----------------
-app.get('/shelter/likes', authMiddleware, requireRole('SHELTER'), async (req, res) => {
+// DELETE /api/animals/:id (shelter only)
+app.delete('/api/animals/:id', authMiddleware, requireShelter, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const shelterRes = await query('SELECT id FROM shelters WHERE user_id=$1', [userId]);
-    if (!shelterRes.rows[0]) return res.status(400).json({ error: 'shelter profile not found' });
-    const shelterId = shelterRes.rows[0].id;
+    const [existing] = await pool.query('SELECT id, shelter_id FROM animals WHERE id = ? LIMIT 1', [req.params.id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'Animal not found' });
+    if (String(existing[0].shelter_id) !== String(req.user.userId)) return res.status(403).json({ error: 'Forbidden' });
 
-    // List all right-swipes for dogs owned by this shelter
-    const q = `
-      SELECT s.adopter_user_id, s.dog_id, s.created_at, u.email, u.name, d.name as dog_name
-      FROM swipes s
-      JOIN dogs d ON d.id = s.dog_id
-      JOIN users u ON u.id = s.adopter_user_id
-      WHERE d.shelter_id = $1 AND s.direction = 'RIGHT'
-      ORDER BY s.created_at DESC
-    `;
-    const r = await query(q, [shelterId]);
-    res.json(r.rows);
+    await pool.query('DELETE FROM animals WHERE id = ?', [req.params.id]);
+    return res.json({ ok: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'server error' });
+    console.error('DELETE /api/animals/:id error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ----------------- basic error handler -----------------
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'internal server error' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+/* =========================
+   START SERVER
+========================= */
+(async () => {
+  try {
+    await initDb();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`API running on http://0.0.0.0:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+})();
