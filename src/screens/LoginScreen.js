@@ -4,7 +4,7 @@ import { styles } from "../styles/styles";
 
 /**
  * LoginScreen
- * Entry screen (UI only)
+ * Entry point for selecting user role.
  */
 export default function LoginScreen({ navigation }) {
   return (
@@ -14,7 +14,7 @@ export default function LoginScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate("Home")}
+          onPress={() => navigation.navigate("AdopteeLogin")}
           activeOpacity={0.9}
         >
           <Text style={styles.buttonText}>Login as Adoptee</Text>
@@ -22,7 +22,7 @@ export default function LoginScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate("Shelter")}
+          onPress={() => navigation.navigate("ShelterLogin")}
           activeOpacity={0.9}
         >
           <Text style={styles.buttonText}>Login as Shelter</Text>

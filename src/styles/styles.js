@@ -333,4 +333,14 @@ export const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: "700",
   },
+
+  input: {
+  width: 260,
+  backgroundColor: "white",
+  borderRadius: 12,
+  padding: 12,
+  marginVertical: 8,
+  borderWidth: 1,
+  borderColor: "#e5e7eb",
+  },
 });

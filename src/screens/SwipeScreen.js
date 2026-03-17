@@ -19,6 +19,10 @@ export default function SwipeScreen({ navigation, favorites }) {
   const { favoriteIds, toggleFavorite } = favorites;
   const [index, setIndex] = React.useState(0);
 
+  // ✅ ADDED: Daily limit state
+  const [dailyLikes, setDailyLikes] = React.useState(0);
+  const [lastReset, setLastReset] = React.useState(new Date().toDateString());
+
   const reveal = useRevealBehindPhoto();
   const swipe = usePlainLeftSwipe({
     onSwipeLeft: () => {
@@ -26,6 +30,24 @@ export default function SwipeScreen({ navigation, favorites }) {
       setIndex((i) => i + 1);
     },
   });
+
+  // ✅ ADDED: Daily reset
+  React.useEffect(() => {
+    const today = new Date().toDateString();
+    if (today !== lastReset) {
+      setDailyLikes(0);
+      setLastReset(today);
+    }
+  }, []);
+
+  // ✅ ADDED: Like handler
+  const handleLike = () => {
+    if (dailyLikes >= 10) {
+      alert("Daily like limit reached");
+      return;
+    }
+    setDailyLikes((prev) => prev + 1);
+  };
 
   const current = DOGS[index];
 
@@ -79,7 +101,10 @@ export default function SwipeScreen({ navigation, favorites }) {
 
           <TouchableOpacity
             style={styles.roundBtnPrimary}
-            onPress={reveal.toggle}
+            onPress={() => {
+              handleLike();        // ✅ ADDED
+              reveal.toggle();
+            }}
             activeOpacity={0.9}
           >
             <Text style={styles.roundBtnPrimaryText}>Info</Text>
@@ -89,6 +114,11 @@ export default function SwipeScreen({ navigation, favorites }) {
 
       <Text style={styles.hintLine}>
         Swipe left for next dog • Slide photo right for info • Tap ☆ to favorite
+      </Text>
+
+      {/* ✅ ADDED */}
+      <Text style={styles.hintLine}>
+        Likes remaining today: {10 - dailyLikes}
       </Text>
     </SafeAreaView>
   );

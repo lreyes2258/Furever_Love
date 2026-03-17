@@ -4,10 +4,10 @@ import BackBubble from "../components/BackBubble";
 import { styles } from "../styles/styles";
 
 /**
- * ShelterLoginScreen
- * Handles shelter login input.
+ * AdopteeLoginScreen
+ * Handles adoptee login input.
  */
-export default function ShelterLoginScreen({ navigation }) {
+export default function AdopteeLoginScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
 
@@ -16,12 +16,12 @@ export default function ShelterLoginScreen({ navigation }) {
       <BackBubble navigation={navigation} />
 
       <View style={styles.center}>
-        <Text style={styles.pageTitle}>Shelter Login</Text>
+        <Text style={styles.pageTitle}>Adoptee Login</Text>
 
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
         <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Shelter")}>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Home")}>
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
       </View>

@@ -1,6 +1,5 @@
 import * as React from "react";
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity } from "react-native";
-import BackBubble from "../components/BackBubble";
 import { styles } from "../styles/styles";
 
 /**
@@ -13,15 +12,28 @@ export default function ShelterLoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <BackBubble navigation={navigation} />
-
       <View style={styles.center}>
         <Text style={styles.pageTitle}>Shelter Login</Text>
 
-        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+        />
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Shelter")}>
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate("Shelter")}
+        >
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
       </View>
