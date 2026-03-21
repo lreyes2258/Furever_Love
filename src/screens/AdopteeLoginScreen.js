@@ -11,6 +11,15 @@ export default function AdopteeLoginScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
 
+  /**
+   * Placeholder login handler
+   * Bypasses backend and logs user in locally
+   */
+  const handleLogin = () => {
+    // Placeholder: skip authentication
+    navigation.navigate("Home");
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <BackBubble navigation={navigation} />
@@ -18,11 +27,32 @@ export default function AdopteeLoginScreen({ navigation }) {
       <View style={styles.center}>
         <Text style={styles.pageTitle}>Adoptee Login</Text>
 
-        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+        />
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Home")}>
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+
+        <TouchableOpacity style={styles.button} onPress={handleLogin}>
           <Text style={styles.buttonText}>Login</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate("Register")}
+          style={{ marginTop: 12 }}
+        >
+          <Text style={{ color: "#6b7280", fontWeight: "700" }}>
+            Don’t have an account? Sign Up
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

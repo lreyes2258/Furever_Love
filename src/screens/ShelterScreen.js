@@ -1,29 +1,26 @@
 import * as React from "react";
-import { SafeAreaView, View, Text, TextInput, TouchableOpacity } from "react-native";
+import { SafeAreaView, View, Text } from "react-native";
 import BackBubble from "../components/BackBubble";
+import HeaderBar from "../components/HeaderBar";
 import { styles } from "../styles/styles";
 
 /**
- * ShelterLoginScreen
- * Handles shelter login input.
+ * ShelterScreen
+ * Placeholder screen
  */
-export default function ShelterLoginScreen({ navigation }) {
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-
+export default function ShelterScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <BackBubble navigation={navigation} />
 
+      <HeaderBar title="Shelter" />
+
       <View style={styles.center}>
-        <Text style={styles.pageTitle}>Shelter Login</Text>
+        <Text style={styles.pageTitle}>Shelter Dashboard</Text>
 
-        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
-
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Shelter")}>
-          <Text style={styles.buttonText}>Login</Text>
-        </TouchableOpacity>
+        <Text style={styles.muted}>
+          This section is not implemented in the demo.
+        </Text>
       </View>
     </SafeAreaView>
   );

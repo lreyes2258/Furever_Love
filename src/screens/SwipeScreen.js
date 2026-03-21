@@ -10,6 +10,7 @@ import { usePlainLeftSwipe } from "../hooks/usePlainLeftSwipe";
 import { useRevealBehindPhoto } from "../hooks/useRevealBehindPhoto";
 
 import { styles } from "../styles/styles";
+import { useAuth } from "../hooks/useAuth";
 
 /**
  * SwipeScreen
@@ -19,35 +20,53 @@ export default function SwipeScreen({ navigation, favorites }) {
   const { favoriteIds, toggleFavorite } = favorites;
   const [index, setIndex] = React.useState(0);
 
-  // ✅ ADDED: Daily limit state
+  /**
+   * Daily swipe limit state
+   */
   const [dailyLikes, setDailyLikes] = React.useState(0);
   const [lastReset, setLastReset] = React.useState(new Date().toDateString());
+  const [contactedDogs, setContactedDogs] = React.useState(new Set());
 
   const reveal = useRevealBehindPhoto();
+
+  /**
+   * Reset daily swipe limit when date changes
+   */
+  React.useEffect(() => {
+    const today = new Date().toDateString();
+    if (today !== lastReset) {
+      setDailyLikes(0);
+      setLastReset(today);
+      setContactedDogs(new Set());
+    }
+  }, [lastReset]);
+
+  /**
+   * Contact handler (counts as swipe/like)
+   */
+  const handleContact = (dogId) => {
+    if (contactedDogs.has(dogId)) return;
+
+    if (dailyLikes >= 10) {
+      alert("Daily like limit reached");
+      return;
+    }
+
+    setDailyLikes((prev) => prev + 1);
+
+    setContactedDogs((prev) => {
+      const next = new Set(prev);
+      next.add(dogId);
+      return next;
+    });
+  };
+
   const swipe = usePlainLeftSwipe({
     onSwipeLeft: () => {
       reveal.reset();
       setIndex((i) => i + 1);
     },
   });
-
-  // ✅ ADDED: Daily reset
-  React.useEffect(() => {
-    const today = new Date().toDateString();
-    if (today !== lastReset) {
-      setDailyLikes(0);
-      setLastReset(today);
-    }
-  }, []);
-
-  // ✅ ADDED: Like handler
-  const handleLike = () => {
-    if (dailyLikes >= 10) {
-      alert("Daily like limit reached");
-      return;
-    }
-    setDailyLikes((prev) => prev + 1);
-  };
 
   const current = DOGS[index];
 
@@ -72,7 +91,9 @@ export default function SwipeScreen({ navigation, favorites }) {
         {!current ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No more dogs</Text>
-            <Text style={styles.emptySubtitle}>Check back later for new arrivals!</Text>
+            <Text style={styles.emptySubtitle}>
+              Check back later for new arrivals!
+            </Text>
           </View>
         ) : (
           <Animated.View
@@ -84,6 +105,7 @@ export default function SwipeScreen({ navigation, favorites }) {
               isFavorite={favoriteIds.has(current.dog_id)}
               onToggleFavorite={() => toggleFavorite(current.dog_id)}
               reveal={reveal}
+              onContact={() => handleContact(current.dog_id)}
             />
           </Animated.View>
         )}
@@ -101,10 +123,7 @@ export default function SwipeScreen({ navigation, favorites }) {
 
           <TouchableOpacity
             style={styles.roundBtnPrimary}
-            onPress={() => {
-              handleLike();        // ✅ ADDED
-              reveal.toggle();
-            }}
+            onPress={reveal.toggle}
             activeOpacity={0.9}
           >
             <Text style={styles.roundBtnPrimaryText}>Info</Text>
@@ -116,7 +135,6 @@ export default function SwipeScreen({ navigation, favorites }) {
         Swipe left for next dog • Slide photo right for info • Tap ☆ to favorite
       </Text>
 
-      {/* ✅ ADDED */}
       <Text style={styles.hintLine}>
         Likes remaining today: {10 - dailyLikes}
       </Text>

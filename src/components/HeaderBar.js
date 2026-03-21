@@ -4,7 +4,7 @@ import { styles } from "../styles/styles";
 
 /**
  * HeaderBar
- * Center title with optional right-side action
+ * Displays a centered title with a right-aligned element.
  */
 export default function HeaderBar({ title, right }) {
   return (

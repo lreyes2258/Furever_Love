@@ -6,7 +6,7 @@ import { styles } from "../styles/styles";
  * DogCard
  * Displays the revealable photo + info panel underneath
  */
-export default function DogCard({ dog, isFavorite, onToggleFavorite, reveal }) {
+export default function DogCard({ dog, isFavorite, onToggleFavorite, reveal, onContact }) {
   return (
     <View style={styles.card}>
       <ScrollView style={styles.infoBehind} contentContainerStyle={{ padding: 16, paddingBottom: 18 }}>
@@ -42,7 +42,7 @@ export default function DogCard({ dog, isFavorite, onToggleFavorite, reveal }) {
         <TouchableOpacity
           style={styles.contactButton}
           activeOpacity={0.8}
-          onPress={() => {}}
+          onPress={onContact}
         >
           <Text style={styles.contactButtonText}>Contact Shelter</Text>
         </TouchableOpacity>
