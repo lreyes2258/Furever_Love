@@ -13,6 +13,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import SwipeScreen from "./src/screens/SwipeScreen";
 import FavoritesScreen from "./src/screens/FavoritesScreen";
 import ShelterScreen from "./src/screens/ShelterScreen";
+import ChatScreen from "./src/screens/ChatScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -61,6 +62,12 @@ export default function App() {
           name="Shelter"
           component={ShelterScreen}
         />
+            
+        <Stack.Screen 
+            name="Chat" 
+            component={ChatScreen} 
+        />
+            
       </Stack.Navigator>
     </NavigationContainer>
   );
