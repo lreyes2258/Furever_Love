@@ -1,7 +1,8 @@
 import * as React from "react";
-import { SafeAreaView, View, Text, TextInput, TouchableOpacity } from "react-native";
+import { SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
 import BackBubble from "../components/BackBubble";
 import { styles } from "../styles/styles";
+import { useAuth } from "../hooks/useAuth";
 
 /**
  * ShelterLoginScreen
@@ -10,15 +11,18 @@ import { styles } from "../styles/styles";
 export default function ShelterLoginScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const {login} = useAuth();
 
-  /**
-   * Placeholder login handler
-   * Bypasses authentication and enters the shelter placeholder directly.
-   */
-  const handleLogin = () => {
-    // Placeholder
-    navigation.navigate("Shelter");
-  };
+
+const handleLogin = async () => {
+  try {
+    await login({ email, password });
+    navigation.navigate("Home");
+  } catch (error) {
+    Alert.alert("Login failed", error.message);
+  }
+};
+
 
   return (
     <SafeAreaView style={styles.safe}>
