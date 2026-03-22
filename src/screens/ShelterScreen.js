@@ -12,12 +12,10 @@ export default function ShelterScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <BackBubble navigation={navigation} />
-
       <HeaderBar title="Shelter" />
 
       <View style={styles.center}>
         <Text style={styles.pageTitle}>Shelter Dashboard</Text>
-
         <Text style={styles.muted}>
           This section is not implemented in the demo.
         </Text>

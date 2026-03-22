@@ -10,11 +10,10 @@ import { usePlainLeftSwipe } from "../hooks/usePlainLeftSwipe";
 import { useRevealBehindPhoto } from "../hooks/useRevealBehindPhoto";
 
 import { styles } from "../styles/styles";
-import { useAuth } from "../hooks/useAuth";
 
 /**
  * SwipeScreen
- * Plain left swipe for next dog; slide photo right to reveal info
+ * Plain left swipe for next dog; slide photo right to reveal info.
  */
 export default function SwipeScreen({ navigation, favorites }) {
   const { favoriteIds, toggleFavorite } = favorites;
@@ -42,7 +41,8 @@ export default function SwipeScreen({ navigation, favorites }) {
   }, [lastReset]);
 
   /**
-   * Contact handler (counts as swipe/like)
+   * Contact handler
+   * Counts once per dog and enforces a max of 10 per day.
    */
   const handleContact = (dogId) => {
     if (contactedDogs.has(dogId)) return;
