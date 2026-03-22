@@ -2,6 +2,7 @@ USE Furever_Love;
 DROP TABLE IF EXISTS animals;
 DROP TABLE IF EXISTS email_verification_tokens;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS likes;
 
 CREATE TABLE users (
 id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -42,6 +43,21 @@ PRIMARY KEY (id),
 INDEX idx_animals_shelter_id (shelter_id),
 INDEX idx_animals_status (status),
 FOREIGN KEY (shelter_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE likes (
+id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+user_id BIGINT UNSIGNED NOT NULL,
+animal_id BIGINT UNSIGNED NOT NULL,
+liked BOOLEAN NOT NULL,
+swiped_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+UNIQUE KEY unique_swipe_per_day(user_id, animal_id, DATE(swiped_at)),
+
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
+
 );
  
 
