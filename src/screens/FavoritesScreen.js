@@ -9,11 +9,11 @@ import { styles } from "../styles/styles";
 
 /**
  * FavoritesScreen
- * Lists favorited dogs (client-side state for now)
+ * Lists favorited dogs.
  */
 export default function FavoritesScreen({ navigation, favorites }) {
   const { favoriteIds } = favorites;
-  const favDogs = DOGS.filter((d) => favoriteIds.has(d.dog_id));
+  const favDogs = DOGS.filter((dog) => favoriteIds.has(dog.dog_id));
 
   return (
     <SafeAreaView style={styles.safe}>

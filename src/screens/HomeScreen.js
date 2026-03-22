@@ -5,12 +5,13 @@ import { styles } from "../styles/styles";
 
 /**
  * HomeScreen
- * Simple navigation hub
+ * Simple navigation hub.
  */
 export default function HomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <BackBubble navigation={navigation} />
+
       <View style={styles.center}>
         <Text style={styles.pageTitle}>Home</Text>
 

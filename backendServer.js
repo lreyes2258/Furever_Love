@@ -11,6 +11,7 @@ const app = express();
 app.use(express.json());
 
 
+
 const frontend_url = process.env.FRONTEND_URL || 'http://localhost:3000'; 
 app.use(cors({
   origin: frontend_url,
@@ -21,6 +22,23 @@ app.use(express.json)
 /* =========================
    CONFIG
 ========================= */
+
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+app.use(cors({
+  origin: FRONTEND_URL,
+  optionsSuccessStatus: 200,
+}));  
+
+const PORT = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET;
+// Ensure JWT_SECRET is set
+if (!JWT_SECRET) {
+  throw new Error('Missing JWT_SECRET');
+}
+
+
+// Config
 
 const DB_CONFIG = {
   host: process.env.DB_HOST,
@@ -33,9 +51,17 @@ const DB_CONFIG = {
   queueLimit: 0,
 };
 
+
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
 
 // Email transport (optional but recommended for verification)
+
+
+const APP_BASE_URL = process.env.APP_BASE_URL || FRONTEND_URL;
+
+// Email transport 
+
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT || 587),
@@ -107,6 +133,23 @@ async function initDb() {
         FOREIGN KEY (shelter_id) REFERENCES users(id)
         ON DELETE CASCADE
     );
+
+  `)
+  
+  // LIKES (for adopters swiping on animals);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS likes (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    animal_id BIGINT UNSIGNED NOT NULL,
+    liked BOOLEAN NOT NULL,
+    swiped_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY unique_swipe (user_id, animal_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
+  );
+
   `);
 }
 
@@ -195,7 +238,8 @@ app.post('/api/auth/register', async (req, res) => {
       [userId, tokenHash]
     );
 
-    // Verification URL (you can point this to your frontend; frontend then calls /verify)
+
+
     const verifyUrl = `${APP_BASE_URL}/verify-email?token=${rawToken}`;
 
     await sendVerificationEmail(email, verifyUrl);
@@ -325,9 +369,11 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+
 /* =========================
    ROUTES: ANIMALS
 ========================= */
+
 
 // GET /api/animals
 // Shelter -> only their animals
@@ -479,6 +525,118 @@ app.delete('/api/animals/:id', authMiddleware, requireShelter, async (req, res) 
     return res.status(500).json({ error: 'Server error' });
   }
 });
+
+
+//like counter and limiter. The limit is ten likes per day.
+const DAILY_LIKE_LIMIT = Number(process.env.DAILY_LIKE_LIMIT || 10); //so you can change the limit with env variable later if needed
+
+async function hasReachedDailyLikeLimit(userId) {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS like_count
+    FROM likes
+    WHERE user_id = ?
+    AND liked =1
+    AND swiped_at >= CURDATE()
+    AND swiped_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)`, 
+    [userId]
+  );
+  return rows[0].like_count >= DAILY_LIKE_LIMIT;
+}
+ 
+
+// Like Route
+app.post('/api/animals/:id/like', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const animalId = req.params.id;
+
+    if (req.user.role !== 'adopter') {
+      return res.status(403).json({ error: 'Only adopters can like animals' });
+    }
+
+    const [animals] = await pool.query(
+      'SELECT id, status FROM animals WHERE id = ? LIMIT 1',
+      [animalId]
+    );
+
+    if (animals.length === 0) {
+      return res.status(404).json({ error: 'Animal not found' });
+    }
+
+    if (animals[0].status !== 'available') {
+      return res.status(400).json({ error: 'Only available animals can be liked' });
+    }
+
+    const [existing] = await pool.query(
+      'SELECT id, liked FROM likes WHERE user_id = ? AND animal_id = ? LIMIT 1',
+      [userId, animalId]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'You already swiped on this animal' });
+    }
+
+    const limitReached = await hasReachedDailyLikeLimit(userId);
+    if (limitReached) {
+      return res.status(429).json({ error: 'Daily like limit reached' });
+    }
+
+    await pool.query(
+      'INSERT INTO likes (user_id, animal_id, liked) VALUES (?, ?, 1)',
+      [userId, animalId]
+    );
+
+    return res.status(201).json({ ok: true, message: 'Like recorded' });
+  } catch (err) {
+    console.error('POST /api/animals/:id/like error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/*Pass route, as in just passing intead of liking.This will also prevent the same animal from popping up in your feed.
+  This can be fully implemented later. */
+
+app.post('/api/animals/:id/pass', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const animalId = req.params.id;
+
+    if (req.user.role !== 'adopter') {
+      return res.status(403).json({ error: 'Only adopters can swipe animals' });
+    }
+
+    const [animals] = await pool.query(
+      'SELECT id FROM animals WHERE id = ? LIMIT 1',
+      [animalId]
+    );
+
+    if (animals.length === 0) {
+      return res.status(404).json({ error: 'Animal not found' });
+    }
+
+    const [existing] = await pool.query(
+      'SELECT id FROM likes WHERE user_id = ? AND animal_id = ? LIMIT 1',
+      [userId, animalId]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'You already swiped on this animal' });
+    }
+
+    await pool.query(
+      'INSERT INTO likes (user_id, animal_id, liked) VALUES (?, ?, 0)',
+      [userId, animalId]
+    );
+
+    return res.status(201).json({ ok: true, message: 'Pass recorded' });
+  } catch (err) {
+    console.error('POST /api/animals/:id/pass error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+  
+
 
 /* =========================
    START SERVER

@@ -10,13 +10,14 @@ import { styles } from "../styles/styles";
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [role, setRole] = React.useState("adopter");
 
   /**
    * Placeholder register handler
-   * Bypasses backend and returns user to login screen
+   * Bypasses backend registration and returns to login screen.
    */
   const handleRegister = () => {
-    // Placeholder: simulate successful account creation
+    // Placeholder
     navigation.navigate("Login");
   };
 
@@ -32,6 +33,8 @@ export default function RegisterScreen({ navigation }) {
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
         />
 
         <TextInput
@@ -41,6 +44,35 @@ export default function RegisterScreen({ navigation }) {
           value={password}
           onChangeText={setPassword}
         />
+
+        <Text style={{ marginTop: 10, fontWeight: "700" }}>
+          Account Type:
+        </Text>
+
+        <View style={{ flexDirection: "row", marginTop: 6 }}>
+          <TouchableOpacity onPress={() => setRole("adopter")}>
+            <Text
+              style={{
+                marginRight: 15,
+                fontWeight: "800",
+                color: role === "adopter" ? "#ff6b6b" : "#6b7280",
+              }}
+            >
+              Adopter
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setRole("shelter")}>
+            <Text
+              style={{
+                fontWeight: "800",
+                color: role === "shelter" ? "#ff6b6b" : "#6b7280",
+              }}
+            >
+              Shelter
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={styles.button}

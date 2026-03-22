@@ -13,10 +13,10 @@ export default function ShelterLoginScreen({ navigation }) {
 
   /**
    * Placeholder login handler
-   * Bypasses backend and logs user in locally
+   * Bypasses authentication and enters the shelter placeholder directly.
    */
   const handleLogin = () => {
-    // Placeholder: skip authentication
+    // Placeholder
     navigation.navigate("Shelter");
   };
 
@@ -32,6 +32,8 @@ export default function ShelterLoginScreen({ navigation }) {
           placeholder="Email"
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
         />
 
         <TextInput
@@ -42,7 +44,11 @@ export default function ShelterLoginScreen({ navigation }) {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleLogin}
+          activeOpacity={0.9}
+        >
           <Text style={styles.buttonText}>Login</Text>
         </TouchableOpacity>
 

@@ -4,12 +4,15 @@ import { styles } from "../styles/styles";
 
 /**
  * DogCard
- * Displays the revealable photo + info panel underneath
+ * Displays the revealable photo and info panel underneath.
  */
 export default function DogCard({ dog, isFavorite, onToggleFavorite, reveal, onContact }) {
   return (
     <View style={styles.card}>
-      <ScrollView style={styles.infoBehind} contentContainerStyle={{ padding: 16, paddingBottom: 18 }}>
+      <ScrollView
+        style={styles.infoBehind}
+        contentContainerStyle={{ padding: 16, paddingBottom: 18 }}
+      >
         <Text style={styles.infoTitle}>{dog.dog_name}</Text>
 
         <Text style={styles.infoLine}>
@@ -47,7 +50,9 @@ export default function DogCard({ dog, isFavorite, onToggleFavorite, reveal, onC
           <Text style={styles.contactButtonText}>Contact Shelter</Text>
         </TouchableOpacity>
 
-        <Text style={styles.infoHint}>Drag the photo → to reveal/hide this info.</Text>
+        <Text style={styles.infoHint}>
+          Drag the photo → to reveal or hide this info.
+        </Text>
       </ScrollView>
 
       <Animated.View
