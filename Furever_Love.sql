@@ -1,8 +1,8 @@
 USE Furever_Love;
-DROP TABLE IF EXISTS animals;
-DROP TABLE IF EXISTS email_verification_tokens;
-DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS likes;
+DROP TABLE IF EXISTS email_verification_tokens;
+DROP TABLE IF EXISTS animals;
+DROP TABLE IF EXISTS users;
 
 CREATE TABLE users (
 id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -52,13 +52,34 @@ user_id BIGINT UNSIGNED NOT NULL,
 animal_id BIGINT UNSIGNED NOT NULL,
 liked BOOLEAN NOT NULL,
 swiped_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+swipe_date DATE NOT NULL DEFAULT (CURRENT_DATE),
 
-UNIQUE KEY unique_swipe_per_day(user_id, animal_id, DATE(swiped_at)),
+UNIQUE KEY unique_swipe_per_animal(user_id, animal_id, swipe_date),
 
 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
 
 );
+
+DELIMITER //
  
+ CREATE TRIGGER limit_daily_swipes
+ BEFORE INSERT ON likes
+ FOR EACH ROW
+ BEGIN
+ DECLARE swipe_count INT;
+ 
+ SELECT COUNT(*) INTO swipe_count
+ FROM likes
+ WHERE user_id = NEW.user_id
+ AND swipe_date = NEW.swipe_date;
+ 
+ IF swipe_count >= 10 THEN
+ SIGNAL SQLSTATE '45000'
+ SET MESSAGE_TEXT = 'Daily swipe limit of 10 reached';
+ END IF;
+ END;
+ 
+ DELIMITER ;
 
 
