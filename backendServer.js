@@ -11,6 +11,19 @@ const app = express();
 app.use(express.json());
 
 
+
+const frontend_url = process.env.FRONTEND_URL || 'http://localhost:3000'; 
+app.use(cors({
+  origin: frontend_url,
+  credentials: true,
+}))
+app.use(express.json)
+
+/* =========================
+   CONFIG
+========================= */
+
+
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 app.use(cors({
   origin: FRONTEND_URL,
@@ -26,6 +39,7 @@ if (!JWT_SECRET) {
 
 
 // Config
+
 const DB_CONFIG = {
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -38,9 +52,15 @@ const DB_CONFIG = {
 };
 
 
+const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+
+// Email transport (optional but recommended for verification)
+
+
 const APP_BASE_URL = process.env.APP_BASE_URL || FRONTEND_URL;
 
 // Email transport 
+
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -113,6 +133,7 @@ async function initDb() {
         FOREIGN KEY (shelter_id) REFERENCES users(id)
         ON DELETE CASCADE
     );
+
   `)
   
   // LIKES (for adopters swiping on animals);
@@ -128,6 +149,7 @@ async function initDb() {
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (animal_id) REFERENCES animals(id) ON DELETE CASCADE
   );
+
   `);
 }
 
@@ -216,7 +238,8 @@ app.post('/api/auth/register', async (req, res) => {
       [userId, tokenHash]
     );
 
-    // Verification URL, point this to frontend; frontend then calls /verify)
+
+
     const verifyUrl = `${APP_BASE_URL}/verify-email?token=${rawToken}`;
 
     await sendVerificationEmail(email, verifyUrl);
@@ -346,7 +369,11 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
- //Routes for animals (CRUD for shelters, read-only for adopters, with some filtering)
+
+/* =========================
+   ROUTES: ANIMALS
+========================= */
+
 
 // GET /api/animals
 // Shelter -> only their animals
@@ -499,6 +526,7 @@ app.delete('/api/animals/:id', authMiddleware, requireShelter, async (req, res) 
   }
 });
 
+
 //like counter and limiter. The limit is ten likes per day.
 const DAILY_LIKE_LIMIT = Number(process.env.DAILY_LIKE_LIMIT || 10); //so you can change the limit with env variable later if needed
 
@@ -608,6 +636,7 @@ app.post('/api/animals/:id/pass', authMiddleware, async (req, res) => {
 });
 
   
+
 
 /* =========================
    START SERVER
