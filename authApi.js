@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:3000/api"
+const API_BASE_URL = "http://localhost:3000"
 
 
 /**
@@ -8,7 +8,7 @@ const API_BASE_URL = "http://localhost:3000/api"
  * Returns the parsed response data.
  */
 export async function loginRequest({ email, password }) {
-  const response = await fetch(`${API_BASE_URL}/login`, {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -33,13 +33,13 @@ export async function loginRequest({ email, password }) {
  * Sends new user information to the backend.
  * Returns the parsed response data.
  */
-export async function registerRequest({ name, email, password }) {
-  const response = await fetch(`${API_BASE_URL}/register`, {
+export async function registerRequest({ role, email, password }) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ name, email, password }),
+    body: JSON.stringify({ role, email, password }),
   });
 
   const data = await response.json();
