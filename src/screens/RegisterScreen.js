@@ -1,7 +1,8 @@
 import * as React from "react";
-import { SafeAreaView, View, Text, TextInput, TouchableOpacity } from "react-native";
+import { SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
 import BackBubble from "../components/BackBubble";
 import { styles } from "../styles/styles";
+import { useAuth } from "../hooks/useAuth";
 
 /**
  * RegisterScreen
@@ -11,15 +12,18 @@ export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [role, setRole] = React.useState("adopter");
+  const { register } = useAuth();
 
-  /**
-   * Placeholder register handler
-   * Bypasses backend registration and returns to login screen.
-   */
-  const handleRegister = () => {
-    // Placeholder
-    navigation.navigate("Login");
+
+  const handleRegister = async () => {
+    try {
+      await register({ email, password });
+      navigation.navigate("Login");
+    } catch (error) {
+      Alert.alert("Register failed", error.message);
+    }
   };
+
 
   return (
     <SafeAreaView style={styles.safe}>
