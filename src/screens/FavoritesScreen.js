@@ -1,5 +1,12 @@
 import * as React from "react";
-import { SafeAreaView, ScrollView, View, Text, TouchableOpacity, Image } from "react-native";
+import {
+  SafeAreaView,
+  ScrollView,
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+} from "react-native";
 
 import BackBubble from "../components/BackBubble";
 import HeaderBar from "../components/HeaderBar";
@@ -9,7 +16,7 @@ import { styles } from "../styles/styles";
 
 /**
  * FavoritesScreen
- * Lists favorited dogs.
+ * Lists favorited dogs and opens the selected dog in SwipeScreen.
  */
 export default function FavoritesScreen({ navigation, favorites }) {
   const { favoriteIds } = favorites;
@@ -39,14 +46,23 @@ export default function FavoritesScreen({ navigation, favorites }) {
           </View>
         ) : (
           favDogs.map((dog) => (
-            <View key={dog.dog_id} style={styles.favRow}>
+            <TouchableOpacity
+              key={dog.dog_id}
+              style={styles.favRow}
+              activeOpacity={0.9}
+              onPress={() =>
+                navigation.navigate("Swipe", {
+                  selectedDogId: dog.dog_id,
+                })
+              }
+            >
               <Image source={dog.image} style={styles.favImg} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.favName}>{dog.dog_name}</Text>
                 <Text style={styles.favMeta}>{dog.breed}</Text>
                 <Text style={styles.favMeta}>Age: {dog.age}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>

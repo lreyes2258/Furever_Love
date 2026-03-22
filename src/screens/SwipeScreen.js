@@ -18,9 +18,22 @@ const API_BASE_URL = "http://localhost:4000/api";
  * UI layer for viewing dogs and sending swipe actions.
  * Daily swipe enforcement should be handled by backend/database logic.
  */
-export default function SwipeScreen({ navigation, favorites }) {
+export default function SwipeScreen({ navigation, route, favorites }) {
   const { favoriteIds, toggleFavorite } = favorites;
-  const [index, setIndex] = React.useState(0);
+  const selectedDogId = route?.params?.selectedDogId ?? null;
+  const openedFromFavorites = selectedDogId !== null;
+
+  /**
+   * Resolve the initial deck position once when the screen mounts.
+   */
+  const initialIndex = React.useMemo(() => {
+    if (!selectedDogId) return 0;
+
+    const foundIndex = DOGS.findIndex((dog) => dog.dog_id === selectedDogId);
+    return foundIndex >= 0 ? foundIndex : 0;
+  }, [selectedDogId]);
+
+  const [index, setIndex] = React.useState(initialIndex);
   const [statusMessage, setStatusMessage] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -34,9 +47,25 @@ export default function SwipeScreen({ navigation, favorites }) {
 
   const reveal = useRevealBehindPhoto();
   const current = DOGS[index];
+  const remainingSwipes = Math.max(0, 10 - dailySwipes);
 
   /**
-   * Reset placeholder daily swipe count when date changes
+   * If the screen is opened from Favorites with a selected dog,
+   * move to that dog once when the route param changes.
+   */
+  React.useEffect(() => {
+    if (!selectedDogId) return;
+
+    const foundIndex = DOGS.findIndex((dog) => dog.dog_id === selectedDogId);
+    if (foundIndex >= 0) {
+      setIndex(foundIndex);
+      reveal.reset();
+      setStatusMessage("");
+    }
+  }, [selectedDogId, reveal]);
+
+  /**
+   * Reset placeholder daily swipe count when date changes.
    */
   React.useEffect(() => {
     const today = new Date().toDateString();
@@ -61,23 +90,33 @@ export default function SwipeScreen({ navigation, favorites }) {
    * Placeholder local swipe tracking for UI feedback only.
    * Backend/database should become the source of truth when auth is fully enabled.
    */
-  const trackSwipe = React.useCallback((dogId) => {
-    if (swipedDogs.has(dogId)) return false;
+  const trackSwipe = React.useCallback(
+    (dogId) => {
+      if (openedFromFavorites) {
+        return false;
+      }
 
-    if (dailySwipes >= 10) {
-      setStatusMessage("Daily swipe limit reached");
-      return false;
-    }
+      if (swipedDogs.has(dogId)) {
+        setStatusMessage("You already swiped on this dog");
+        return false;
+      }
 
-    setDailySwipes((prev) => prev + 1);
-    setSwipedDogs((prev) => {
-      const next = new Set(prev);
-      next.add(dogId);
-      return next;
-    });
+      if (dailySwipes >= 10) {
+        setStatusMessage("Daily swipe limit reached");
+        return false;
+      }
 
-    return true;
-  }, [dailySwipes, swipedDogs]);
+      setDailySwipes((prev) => Math.min(prev + 1, 10));
+      setSwipedDogs((prev) => {
+        const next = new Set(prev);
+        next.add(dogId);
+        return next;
+      });
+
+      return true;
+    },
+    [dailySwipes, swipedDogs, openedFromFavorites]
+  );
 
   /**
    * submitLike
@@ -116,12 +155,16 @@ export default function SwipeScreen({ navigation, favorites }) {
   const handlePass = React.useCallback(async () => {
     if (!current || isSubmitting) return;
 
+    if (openedFromFavorites) {
+      setStatusMessage("Swipe is disabled when opened from Favorites");
+      return;
+    }
+
     const allowed = trackSwipe(current.dog_id);
     if (!allowed) return;
 
     try {
       setIsSubmitting(true);
-      setStatusMessage("");
       setStatusMessage("Pass recorded");
       goNext();
     } catch (err) {
@@ -129,7 +172,7 @@ export default function SwipeScreen({ navigation, favorites }) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [current, goNext, isSubmitting, trackSwipe]);
+  }, [current, goNext, isSubmitting, trackSwipe, openedFromFavorites]);
 
   /**
    * handleContact
@@ -139,12 +182,19 @@ export default function SwipeScreen({ navigation, favorites }) {
     async (dog) => {
       if (!dog || isSubmitting) return;
 
+      if (openedFromFavorites) {
+        navigation.navigate("Chat", {
+          dog,
+          shelterName: dog.shelter_name || `Shelter ${dog.shelter_id}`,
+        });
+        return;
+      }
+
       const allowed = trackSwipe(dog.dog_id);
       if (!allowed) return;
 
       try {
         setIsSubmitting(true);
-        setStatusMessage("");
 
         const result = await submitLike(dog.dog_id);
 
@@ -166,7 +216,7 @@ export default function SwipeScreen({ navigation, favorites }) {
         setIsSubmitting(false);
       }
     },
-    [goNext, isSubmitting, navigation, trackSwipe]
+    [goNext, isSubmitting, navigation, trackSwipe, openedFromFavorites]
   );
 
   const swipe = usePlainLeftSwipe({
@@ -201,7 +251,7 @@ export default function SwipeScreen({ navigation, favorites }) {
         ) : (
           <Animated.View
             style={{ flex: 1, transform: [{ translateX: swipe.swipeX }] }}
-            {...swipe.panResponder.panHandlers}
+            {...(!openedFromFavorites ? swipe.panResponder.panHandlers : {})}
           >
             <DogCard
               dog={current}
@@ -220,7 +270,7 @@ export default function SwipeScreen({ navigation, favorites }) {
             style={styles.roundBtn}
             onPress={handlePass}
             activeOpacity={0.9}
-            disabled={isSubmitting}
+            disabled={isSubmitting || openedFromFavorites}
           >
             <Text style={styles.roundBtnText}>✕</Text>
           </TouchableOpacity>
@@ -240,15 +290,13 @@ export default function SwipeScreen({ navigation, favorites }) {
         Swipe left for next dog • Slide photo right for info • Tap ☆ to favorite
       </Text>
 
-      <Text style={styles.hintLine}>
-        Swipes remaining today: {10 - dailySwipes}
-      </Text>
-
-      {!!statusMessage && (
+      {!openedFromFavorites && (
         <Text style={styles.hintLine}>
-          {statusMessage}
+          Swipes remaining today: {remainingSwipes}
         </Text>
       )}
+
+      {!!statusMessage && <Text style={styles.hintLine}>{statusMessage}</Text>}
     </SafeAreaView>
   );
 }
