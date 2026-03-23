@@ -98,6 +98,7 @@ export default function SwipeScreen({ navigation, favorites }) {
           </View>
         ) : (
           <Animated.View
+	key={current.dog_id}
             style={{ flex: 1, transform: [{ translateX: swipe.swipeX }] }}
             {...swipe.panResponder.panHandlers}
           >

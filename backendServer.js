@@ -12,23 +12,15 @@ app.use(express.json());
 
 
 
-const frontend_url = process.env.FRONTEND_URL || 'http://localhost:3000'; 
 app.use(cors({
-  origin: frontend_url,
+  origin: true,
   credentials: true,
-}))
-app.use(express.json)
+})); 
+app.use(express.json());
 
 /* =========================
    CONFIG
 ========================= */
-
-
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-app.use(cors({
-  origin: FRONTEND_URL,
-  optionsSuccessStatus: 200,
-}));  
 
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -52,12 +44,8 @@ const DB_CONFIG = {
 };
 
 
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`;
+const APP_BASE_URL = process.env.APP_BASE_URL || `http://0.0.0.0:${PORT}`;
 
-// Email transport (optional but recommended for verification)
-
-
-const APP_BASE_URL = process.env.APP_BASE_URL || FRONTEND_URL;
 
 // Email transport 
 
@@ -134,7 +122,7 @@ async function initDb() {
         ON DELETE CASCADE
     );
 
-  `)
+  `);
   
   // LIKES (for adopters swiping on animals);
   await pool.query(`

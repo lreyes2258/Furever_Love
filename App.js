@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { useFavoritesState } from "./src/hooks/useFavoritesState";
+import { AuthProvider } from "./src/context/authContext"; 
 
 // Screens
 import LoginScreen from "./src/screens/LoginScreen";
@@ -25,6 +26,7 @@ export default function App() {
   const favorites = useFavoritesState();
 
   return (
+<AuthProvider>
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
@@ -70,5 +72,6 @@ export default function App() {
             
       </Stack.Navigator>
     </NavigationContainer>
+</AuthProvider>
   );
 }

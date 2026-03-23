@@ -4,26 +4,52 @@ import BackBubble from "../components/BackBubble";
 import { styles } from "../styles/styles";
 import { useAuth } from "../hooks/useAuth";
 
-/**
- * RegisterScreen
- * Handles user account creation.
- */
+const API_BASE_URL = "https://nonseasonal-superelaborately-velma.ngrok-free.dev";
+
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [role, setRole] = React.useState("adopter");
-  const { register } = useAuth();
-
 
   const handleRegister = async () => {
+    if (!email || !password) {
+      Alert.alert("Validation Error", "Email and password are required");
+      return;
+    }
+
     try {
-      await register({ email, password });
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Registration failed");
+      }
+
+      console.log("Registered user:", data); // data.id should exist
+      
+      if (data.devVerifyLink) {
+        const tokenParam = data.devVerifyLink.split("token=")[1];
+        await fetch(`${API_BASE_URL}/api/auth/verify-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: tokenParam }),
+        });
+        console.log("Email auto-verified for dev");
+      }
+
+      Alert.alert("Success", "Registration and verification succeeded!");
+
+      // Step 3: Navigate to login
       navigation.navigate("Login");
     } catch (error) {
       Alert.alert("Register failed", error.message);
     }
   };
-
 
   return (
     <SafeAreaView style={styles.safe}>
