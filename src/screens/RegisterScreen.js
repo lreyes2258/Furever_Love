@@ -6,6 +6,10 @@ import { useAuth } from "../hooks/useAuth";
 
 const API_BASE_URL = "https://nonseasonal-superelaborately-velma.ngrok-free.dev";
 
+/**
+ * RegisterScreen
+ * Handles user account creation.
+ */
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
