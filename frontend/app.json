@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Furever Love",
+    "slug": "furever-love",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/shiba.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/shiba.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/shiba.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/shiba.png"
+    }
+  }
+}

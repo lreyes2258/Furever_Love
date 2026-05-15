@@ -1,0 +1,35 @@
+/**
+ * Theme
+ * Shared colors and design constants
+ */
+export const COLORS = {
+  ink: "#111518",
+  inkSoft: "#3d464d",
+  bg: "#f7ead6",
+  paper: "#fff8e8",
+  card: "#fffdf7",
+  border: "#111518",
+  borderSoft: "rgba(17, 21, 24, 0.16)",
+  primary: "#2ee59d",
+  primaryDark: "#08764c",
+  popPink: "#ff77b7",
+  popCyan: "#74d7ff",
+  popYellow: "#ffd84d",
+  popLavender: "#bda3ff",
+  popCoral: "#ff8a65",
+  popBlue: "#276cff",
+  popRed: "#ff3d4f",
+  glass: "rgba(255, 255, 255, 0.58)",
+  glassWarm: "rgba(255, 248, 232, 0.72)",
+  inkGlass: "rgba(17, 21, 24, 0.78)",
+  primaryGlass: "rgba(46, 229, 157, 0.46)",
+  pinkGlass: "rgba(255, 119, 183, 0.46)",
+  cyanGlass: "rgba(116, 215, 255, 0.48)",
+  yellowGlass: "rgba(255, 216, 77, 0.52)",
+  lavenderGlass: "rgba(189, 163, 255, 0.48)",
+  coralGlass: "rgba(255, 138, 101, 0.48)",
+  text: "#111518",
+  muted: "#687179",
+  star: "#ffd84d",
+  white: "#ffffff",
+};
